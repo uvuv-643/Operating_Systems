@@ -32,7 +32,7 @@ OBJS = \
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
-#TOOLPREFIX = 
+TOOLPREFIX = ../sc-dt/riscv-gcc/bin/riscv64-unknown-elf-
 
 # Try to infer the correct TOOLPREFIX if not set
 ifndef TOOLPREFIX
@@ -87,7 +87,13 @@ $U/initcode: $U/initcode.S
 tags: $(OBJS) _init
 	etags *.S *.c
 
-ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+$U/dumptests_asm.o : $U/dumptests.S
+	$(CC) $(CFLAGS) -c -o $U/dumptests_asm.o $U/dumptests.S
+
+$U/dump2tests_asm.o : $U/dump2tests.S
+	$(CC) $(CFLAGS) -c -o $U/dump2tests_asm.o $U/dump2tests.S
+	
+ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o $U/dumptests_asm.o $U/dump2tests_asm.o
 
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
@@ -99,6 +105,7 @@ $U/usys.S : $U/usys.pl
 
 $U/usys.o : $U/usys.S
 	$(CC) $(CFLAGS) -c -o $U/usys.o $U/usys.S
+
 
 $U/_forktest: $U/forktest.o $(ULIB)
 	# forktest has less library code linked in - needs to be small
@@ -132,6 +139,10 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+	$U/_hello\
+	$U/_pingpong\
+	$U/_dumptests\
+	$U/_dump2tests\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

@@ -681,3 +681,46 @@ procdump(void)
     printf("\n");
   }
 }
+
+// Prints states of registers s2 - s11 to console if hex format
+// Returns 0 if successfully printed
+int dump(void) {
+
+  struct proc* current_proc = myproc();
+  struct trapframe* current_trapframe = current_proc->trapframe;
+  if (current_trapframe != 0) {
+    int current_register = 2;
+    for (uint64* i = &(current_trapframe->s2); i <= &(current_trapframe->s11); i++) {
+      printf("s%d = %d\n", current_register, *((int*) i));
+      current_register++;
+    }
+    return 0;
+  }
+  return -1;
+
+}
+
+// Gets value in register with register_num of target proccess
+// with given pid. Result is written in return_value address
+// Returns 0 if successfully written
+// Returns -1 if proccess cannot be accessed
+// Returns -2 if there is no proccess with pid
+// Returns -3 if there is no such register from s2 - s11
+// Returns -4 if return_value is incorrect for writing
+int dump2(int pid, int register_num, uint64 return_value) {
+  // printf("%d %d", pid, register_num);
+  if (register_num < 2 || register_num > 11) return -3;
+  if (pid < 0 || pid >= NPROC) return -2;
+  struct proc * target_proc = & proc[pid - 1];
+  if (target_proc->pid != pid) return -2;
+  struct proc * current_proc = myproc();
+  struct proc * t_proc = target_proc;
+  while (t_proc != 0 && t_proc->pid != current_proc->pid) 
+    t_proc = t_proc->parent;
+  if (t_proc == 0) return -1;
+  struct trapframe* target_trapframe = target_proc->trapframe;
+  uint64 value = *(&(target_trapframe->s2) + (register_num - 2));
+  int copy_result = copyout(current_proc->pagetable, return_value, (char*) &value, sizeof(uint64));
+  if (copy_result == -1) return -4;
+  return 0;
+}
