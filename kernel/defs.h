@@ -191,3 +191,8 @@ int             dump2(int, int, uint64);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+
+#define DUMP2_PROCCESS_CANNOT_BE_ACCESSED -1
+#define DUMP2_INCORRECT_PID -2
+#define DUMP2_INCORRECT_REGISTER_NUMBER -3
+#define DUMP2_UNABLE_TO_WRITE -4

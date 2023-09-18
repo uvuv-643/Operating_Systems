@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -708,19 +709,35 @@ int dump(void) {
 // Returns -3 if there is no such register from s2 - s11
 // Returns -4 if return_value is incorrect for writing
 int dump2(int pid, int register_num, uint64 return_value) {
-  // printf("%d %d", pid, register_num);
-  if (register_num < 2 || register_num > 11) return -3;
-  if (pid < 0 || pid >= NPROC) return -2;
-  struct proc * target_proc = & proc[pid - 1];
-  if (target_proc->pid != pid) return -2;
+
+  // If passed incorrect data
+  if (register_num < 2 || register_num > 11) return DUMP2_INCORRECT_REGISTER_NUMBER;
+  if (pid < 0 || pid >= NPROC) return DUMP2_INCORRECT_PID;
+
+  // Try to find proccess with given PID on CPU
+  int target_proc_index = -1;
+  for (int i = 0; i < pid; i++) {
+     struct proc * target_proc = & proc[i];
+     if (target_proc->pid == pid) {
+      target_proc_index = i;
+     }
+  }
+  if (target_proc_index == -1) return DUMP2_INCORRECT_PID; 
+
   struct proc * current_proc = myproc();
+  struct proc * target_proc = & proc[target_proc_index];
+
+  // Checking whether target process is child process
   struct proc * t_proc = target_proc;
   while (t_proc != 0 && t_proc->pid != current_proc->pid) 
     t_proc = t_proc->parent;
-  if (t_proc == 0) return -1;
+  if (t_proc == 0) return DUMP2_PROCCESS_CANNOT_BE_ACCESSED;
+
+  // Writing register value to &target_value
   struct trapframe* target_trapframe = target_proc->trapframe;
   uint64 value = *(&(target_trapframe->s2) + (register_num - 2));
   int copy_result = copyout(current_proc->pagetable, return_value, (char*) &value, sizeof(uint64));
-  if (copy_result == -1) return -4;
+  if (copy_result == -1) return DUMP2_UNABLE_TO_WRITE;
+
   return 0;
 }
