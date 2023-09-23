@@ -720,6 +720,7 @@ int dump2(int pid, int register_num, uint64 return_value) {
      struct proc * target_proc = & proc[i];
      if (target_proc->pid == pid) {
       target_proc_index = i;
+      break;
      }
   }
   if (target_proc_index == -1) return DUMP2_INCORRECT_PID; 
