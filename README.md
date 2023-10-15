@@ -19,8 +19,8 @@
      - Нужно ли сохранить блокировку в `ftable.lock`? Зачем она вообще используется?
 
         struct {\
-        struct spinlock lock;\
-        struct file file[NFILE];\
+            struct spinlock lock;\
+            struct file file[NFILE];\
         } ftable;
 
 
