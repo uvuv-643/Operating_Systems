@@ -24,6 +24,8 @@ int sleep(int);
 int uptime(void);
 int dump(void);
 int dump2(int, int, uint64*);
+int print_hash_proc(void);
+int free_hash_table(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

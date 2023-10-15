@@ -1,20 +1,35 @@
-#include "types.h"
-#include "param.h"
-#include "memlayout.h"
-#include "riscv.h"
-#include "spinlock.h"
+#include "../types.h"
+#include "../param.h"
+#include "../memlayout.h"
+#include "../riscv.h"
+#include "../spinlock.h"
+#include "../defs.h"
 #include "proc.h"
-#include "defs.h"
-
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct proc_list {
+  struct proc_list* next;
+  struct proc_list* prev;
+  struct proc proc;
+};
+
+struct {
+  struct proc_list* procs;
+  struct proc_list* cemetery;
+  uint64 procs_size;
+  uint64 cemetery_size;
+} pdata;
+
+struct proc_list* very_dead_procs[CNPROC];
 
 struct proc *initproc;
 
 int nextpid = 1;
+int nextcpid = 1;
 struct spinlock pid_lock;
+struct spinlock list_lock;
+struct spinlock hash_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -32,31 +47,21 @@ struct spinlock wait_lock;
 // guard page.
 void
 proc_mapstacks(pagetable_t kpgtbl)
-{
-  struct proc *p;
-  
-  for(p = proc; p < &proc[NPROC]; p++) {
-    char *pa = kalloc();
-    if(pa == 0)
-      panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
-    kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-  }
-}
+{ }
 
 // initialize the proc table.
 void
 procinit(void)
 {
-  struct proc *p;
-  
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
-  for(p = proc; p < &proc[NPROC]; p++) {
-      initlock(&p->lock, "proc");
-      p->state = UNUSED;
-      p->kstack = KSTACK((int) (p - proc));
-  }
+  initlock(&list_lock, "list_lock");
+  initlock(&hash_lock, "hash_lock");
+  pdata.procs = 0;
+  pdata.cemetery = 0;
+  pdata.procs_size = 0;
+  pdata.cemetery_size = 0;
+  proc_hashed_init();
 }
 
 // Must be called with interrupts disabled,
@@ -94,50 +99,126 @@ int
 allocpid()
 {
   int pid;
-  
   acquire(&pid_lock);
   pid = nextpid;
   nextpid = nextpid + 1;
   release(&pid_lock);
-
   return pid;
 }
+
+int
+remove_proc_from_cemetery(struct proc_list* p)
+{
+
+  struct proc_list** pp;
+  for (pp = very_dead_procs; pp < &very_dead_procs[CNPROC]; pp++) {
+    if (*pp == 0) {
+      *pp = p;
+      return 0;
+    }
+  }
+  acquire(&pid_lock);
+  nextcpid = (nextcpid + 1) % CNPROC;
+  release(&pid_lock);
+
+  bd_free(very_dead_procs[nextcpid]);
+  very_dead_procs[nextcpid] = 0;
+  very_dead_procs[nextcpid] = p;
+  return 0;
+}
+
+// list_lock must be held 
+// before entering this function
+int
+add_proc_to_cemetery(struct proc_list* proc) 
+{
+  if (proc == 0) return -1;
+  proc->proc.state = ZOMBIE;
+  proc->next = pdata.cemetery;
+  if (pdata.cemetery != 0)
+    pdata.cemetery->prev = proc;
+  proc->prev = 0;
+  pdata.cemetery = proc;
+  pdata.cemetery_size++;
+  return 0;
+}
+
+// list_lock must be held.
+void dump_procs() 
+{
+  printf("Procs:\n");
+  struct proc_list* current = pdata.procs;
+  while (current) {
+    printf("  -> Proc %d %x", current->proc.pid, &current->proc);
+    if (current->next && current->next->prev == current) {
+      printf(" ->");
+    }
+    printf("\n");
+    current = current->next;
+  }
+  printf("Cemetery:\n");
+  current = pdata.cemetery;
+  while (current) {
+    printf("  -> Proc %d %x", current->proc.pid, &current->proc);
+    if (current->next && current->next->prev == current) {
+      printf(" ->");
+    }
+    printf("\n");
+    current = current->next;
+  }
+  printf("\n");
+}
+
 
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
-static struct proc*
-allocproc(void)
+static struct proc_list*
+allocproc()
 {
-  struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == UNUSED) {
-      goto found;
-    } else {
-      release(&p->lock);
+  struct proc *p;
+  struct proc_list* pp = 0;
+
+  struct proc_list** ppl;
+  for (ppl = very_dead_procs; ppl < &very_dead_procs[CNPROC]; ppl++) {
+    if (*ppl && (*ppl)->proc.state == UNUSED) {
+      pp = *ppl;
+      *ppl = 0;
+      break;
     }
   }
-  return 0;
+  if (pp == 0) {
+    pp = bd_malloc(sizeof(struct proc_list));
+  }
 
-found:
+  if (pp == 0) return 0;
+    memset(pp, 0, sizeof(struct proc_list));
+    initlock(&pp->proc.lock, "proc");
+  acquire(&pp->proc.lock);
+    
+
+  // printf("ALLOCATED (%d, %d) SPACE AT %x \n", sizeof(*pp), sizeof(struct proc_list), pp);
+  // memset(pp, 0, sizeof(struct proc_list));
+  // initlock(&pp->proc.lock, "proc");
+  // acquire(&pp->proc.lock);
+
+  pp->prev = 0;
+  p = &pp->proc;
+  p->kstack = (uint64) (void*)bd_malloc(PGSIZE);
   p->pid = allocpid();
   p->state = USED;
 
   // Allocate a trapframe page.
-  if((p->trapframe = (struct trapframe *)kalloc()) == 0){
+  if((p->trapframe = (struct trapframe *)kalloc()) == 0) {
     freeproc(p);
-    release(&p->lock);
     return 0;
   }
-
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
+  if(p->pagetable == 0){;
     freeproc(p);
-    release(&p->lock);
     return 0;
   }
 
@@ -146,30 +227,56 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  return pp;
 
-  return p;
 }
 
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+// list_lock must be held.
 static void
 freeproc(struct proc *p)
 {
-  if(p->trapframe)
-    kfree((void*)p->trapframe);
-  p->trapframe = 0;
-  if(p->pagetable)
-    proc_freepagetable(p->pagetable, p->sz);
-  p->pagetable = 0;
-  p->sz = 0;
-  p->pid = 0;
-  p->parent = 0;
-  p->name[0] = 0;
-  p->chan = 0;
-  p->killed = 0;
-  p->xstate = 0;
-  p->state = UNUSED;
+  // printf("exit from %d (current %d)\n", p->pid, myproc()->pid);
+  struct proc_list* pp;
+  if (pdata.cemetery != 0) {
+    if (&pdata.cemetery->proc == p) {
+      pp = pdata.cemetery;
+      pdata.cemetery = pdata.cemetery->next;
+      if (pdata.cemetery != 0)
+        pdata.cemetery->prev = 0;
+    } else {
+      for (pp = pdata.cemetery->next; pp != 0; pp = pp->next) {
+        if (&pp->proc == p) {
+          pp->prev->next = pp->next;
+          if (pp->next != 0)
+            pp->next->prev = pp->prev;
+          break;
+        }
+      }
+    }
+    if(p->kstack) {
+      bd_free((void*)p->kstack);
+    }
+    if(p->trapframe) {
+      kfree(p->trapframe);
+    }
+    if(p->pagetable && p->sz)
+      proc_freepagetable(p->pagetable, p->sz);
+
+    p->state = UNUSED;
+    pdata.cemetery_size--;
+    acquire(&hash_lock);
+    struct proc_hashed* current_proc = proc_by_pid(p->pid);
+    current_proc->filled = 0;
+    current_proc->proc = 0;
+    release(&hash_lock);
+    remove_proc_from_cemetery(pp);
+    release(&p->lock);
+    return;
+  }
+  panic("freeproc, but cemetery empty");
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -233,10 +340,15 @@ uchar initcode[] = {
 void
 userinit(void)
 {
+  struct proc_list *pp;
   struct proc *p;
+  pp = allocproc();
 
-  p = allocproc();
+  acquire(&list_lock);
+  p = &pp->proc;
   initproc = p;
+  pdata.procs = pp;
+  release(&list_lock);
   
   // allocate one user page and copy initcode's instructions
   // and data into it.
@@ -252,7 +364,11 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  acquire(&hash_lock);
+  create_proc_by_pid(p);
+  release(&hash_lock);
   release(&p->lock);
+
 }
 
 // Grow or shrink user memory by n bytes.
@@ -281,20 +397,37 @@ int
 fork(void)
 {
   int i, pid;
-  struct proc *np;
-  struct proc *p = myproc();
+  struct proc* np;
+  struct proc_list* npp;
+  struct proc* p = myproc();
+
+  acquire(&list_lock);
+
+  if (pdata.procs_size + pdata.cemetery_size >= NPROC) {
+    release(&list_lock);
+    return -1;
+  } 
 
   // Allocate process.
-  if((np = allocproc()) == 0){
+  if((npp = allocproc()) == 0) {
+    release(&list_lock);
     return -1;
   }
 
+  pdata.procs->prev = npp;
+  npp->next = pdata.procs;
+  pdata.procs = npp;
+  pdata.procs_size++;
+  np = &npp->proc;
+
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if (uvmcopy(p->pagetable, np->pagetable, p->sz) < 0) {
     freeproc(np);
-    release(&np->lock);
     return -1;
   }
+
+  release(&list_lock);
+
   np->sz = p->sz;
 
   // copy saved user registers.
@@ -321,9 +454,17 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+
   release(&np->lock);
 
-  return pid;
+  acquire(&hash_lock);
+  if(create_proc_by_pid(np) == PROC_WAS_FILLED) {
+    release(&hash_lock);
+    return pid;
+  }
+  release(&hash_lock);
+  return -1;
+
 }
 
 // Pass p's abandoned children to init.
@@ -331,15 +472,26 @@ fork(void)
 void
 reparent(struct proc *p)
 {
-  struct proc *pp;
-
-  for(pp = proc; pp < &proc[NPROC]; pp++){
-    if(pp->parent == p){
-      pp->parent = initproc;
+  struct proc_list *pp;
+  acquire(&list_lock);
+  for(pp = pdata.procs; pp != 0; pp = pp->next){
+    if(pp->proc.parent == p){
+      pp->proc.parent = initproc;
       wakeup(initproc);
     }
   }
+
+  // если родительский процесс умер
+  // убираем его детей с кладбища...
+  for(pp = pdata.cemetery; pp != 0; pp = pp->next){
+    if(pp->proc.parent == p){
+      pp->proc.parent = initproc;
+      wakeup(initproc);
+    }
+  }
+  release(&list_lock);
 }
+
 
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
@@ -379,10 +531,36 @@ exit(int status)
   p->xstate = status;
   p->state = ZOMBIE;
 
-  release(&wait_lock);
+  release(&p->lock);
 
+  acquire(&list_lock);
+  pdata.procs_size--;
+  struct proc_list* pp;
+  if (&pdata.procs->proc == p) {
+    pp = pdata.procs;
+    pdata.procs = pdata.procs->next;
+    if (pdata.procs != 0)
+        pdata.procs->prev = 0;
+  } else {
+    for (pp = pdata.procs->next; pp != 0; pp = pp->next) {
+      if (&pp->proc == p) {
+        pp->prev->next = pp->next;
+        if (pp->next != 0)
+          pp->next->prev = pp->prev;
+        break;
+      }
+    }
+  }
+  add_proc_to_cemetery(pp);
+  release(&list_lock);
+  
+  release(&wait_lock);
+  
+  acquire(&p->lock);
   // Jump into the scheduler, never to return.
+
   sched();
+  
   panic("zombie exit");
 }
 
@@ -391,7 +569,9 @@ exit(int status)
 int
 wait(uint64 addr)
 {
+
   struct proc *pp;
+  struct proc_list *ppl;
   int havekids, pid;
   struct proc *p = myproc();
 
@@ -399,39 +579,50 @@ wait(uint64 addr)
 
   for(;;){
     // Scan through table looking for exited children.
-    havekids = 0;
-    for(pp = proc; pp < &proc[NPROC]; pp++){
-      if(pp->parent == p){
-        // make sure the child isn't still in exit() or swtch().
-        acquire(&pp->lock);
+    havekids = 0; 
 
+    acquire(&list_lock);
+    for(ppl = pdata.procs; ppl != 0; ppl = ppl->next) {
+      pp = &ppl->proc;
+      acquire(&pp->lock);
+      if(pp->parent == p)
+        havekids = 1;
+      release(&pp->lock);
+    }
+    for(ppl = pdata.cemetery; ppl != 0; ppl = ppl->next) {
+      pp = &ppl->proc;
+      if(pp->parent == p){
+        acquire(&pp->lock);
         havekids = 1;
         if(pp->state == ZOMBIE){
           // Found one.
           pid = pp->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
                                   sizeof(pp->xstate)) < 0) {
-            release(&pp->lock);
+              release(&pp->lock);
             release(&wait_lock);
+            release(&list_lock);
             return -1;
           }
-          freeproc(pp);
-          release(&pp->lock);
+          freeproc(pp); 
           release(&wait_lock);
+          release(&list_lock);
           return pid;
         }
-        release(&pp->lock);
+          release(&pp->lock); 
       }
     }
+    release(&list_lock);
 
     // No point waiting if we don't have any children.
     if(!havekids || killed(p)){
       release(&wait_lock);
       return -1;
     }
-    
+  
     // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
+
   }
 }
 
@@ -446,14 +637,15 @@ void
 scheduler(void)
 {
   struct proc *p;
+  struct proc_list* pp;
   struct cpu *c = mycpu();
   
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-
-    for(p = proc; p < &proc[NPROC]; p++) {
+    for(pp = pdata.procs; pp != 0; pp = pp->next) {
+      p = &pp->proc;
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
@@ -467,7 +659,7 @@ scheduler(void)
         // It should have changed its p->state before coming back.
         c->proc = 0;
       }
-      release(&p->lock);
+        release(&p->lock);
     }
   }
 }
@@ -527,7 +719,6 @@ forkret(void)
     first = 0;
     fsinit(ROOTDEV);
   }
-
   usertrapret();
 }
 
@@ -568,9 +759,10 @@ void
 wakeup(void *chan)
 {
   struct proc *p;
-
-  for(p = proc; p < &proc[NPROC]; p++) {
-    if(p != myproc()){
+  struct proc_list* pp;
+  for(pp = pdata.procs; pp != 0; pp = pp->next) {
+    p = &pp->proc;
+    if (p != myproc()) {
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
@@ -578,6 +770,7 @@ wakeup(void *chan)
       release(&p->lock);
     }
   }
+
 }
 
 // Kill the process with the given pid.
@@ -586,20 +779,19 @@ wakeup(void *chan)
 int
 kill(int pid)
 {
-  struct proc *p;
-
-  for(p = proc; p < &proc[NPROC]; p++){
+  acquire(&hash_lock);
+  struct proc_hashed *pp = proc_by_pid(pid);
+  release(&hash_lock);
+  if (pp != 0 && pp->proc != 0) {
+    struct proc* p = pp->proc;
     acquire(&p->lock);
-    if(p->pid == pid){
-      p->killed = 1;
-      if(p->state == SLEEPING){
-        // Wake process from sleep().
-        p->state = RUNNABLE;
-      }
-      release(&p->lock);
-      return 0;
+    p->killed = 1;
+    if(p->state == SLEEPING){
+      // Wake process from sleep().
+      p->state = RUNNABLE;
     }
     release(&p->lock);
+    return 0;
   }
   return -1;
 }
@@ -668,25 +860,36 @@ procdump(void)
   [ZOMBIE]    "zombie"
   };
   struct proc *p;
+  struct proc_list* pp;
   char *state;
 
-  printf("\n");
-  for(p = proc; p < &proc[NPROC]; p++){
+  for(pp = pdata.procs; pp != 0; pp = pp->next) {
+    p = &pp->proc;
     if(p->state == UNUSED)
       continue;
     if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
-    printf("\n");
+    printf("%d %s %s \n", p->pid, state, p->name);
+  }
+
+  printf("CEMETERY: \n");
+  for(pp = pdata.cemetery; pp != 0; pp = pp->next) {
+    p = &pp->proc;
+    if(p->state == UNUSED)
+      continue;
+    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
+      state = states[p->state];
+    else
+      state = "???";
+  printf("%d %s %s \n", p->pid, state, p->name);
   }
 }
 
 // Prints states of registers s2 - s11 to console if hex format
 // Returns 0 if successfully printed
 int dump(void) {
-
   struct proc* current_proc = myproc();
   struct trapframe* current_trapframe = current_proc->trapframe;
   if (current_trapframe != 0) {
@@ -712,21 +915,13 @@ int dump2(int pid, int register_num, uint64 return_value) {
 
   // If passed incorrect data
   if (register_num < 2 || register_num > 11) return DUMP2_INCORRECT_REGISTER_NUMBER;
-  if (pid < 0 || pid >= NPROC) return DUMP2_INCORRECT_PID;
 
   // Try to find proccess with given PID on CPU
-  int target_proc_index = -1;
-  for (int i = 0; i < pid; i++) {
-     struct proc * target_proc = & proc[i];
-     if (target_proc->pid == pid) {
-      target_proc_index = i;
-      break;
-     }
-  }
-  if (target_proc_index == -1) return DUMP2_INCORRECT_PID; 
-
+  struct proc_hashed* proc_hashed = proc_by_pid(pid);
+  if (proc_hashed == PROC_NO_PROCESS_FOUND) return DUMP2_INCORRECT_PID;
+  struct proc* target_proc = proc_hashed->proc;
+  if (target_proc == PROC_NO_PROCESS_FOUND) return DUMP2_INCORRECT_PID; 
   struct proc * current_proc = myproc();
-  struct proc * target_proc = & proc[target_proc_index];
 
   // Checking whether target process is child process
   struct proc * t_proc = target_proc;
@@ -741,4 +936,6 @@ int dump2(int pid, int register_num, uint64 return_value) {
   if (copy_result == -1) return DUMP2_UNABLE_TO_WRITE;
 
   return 0;
+
 }
+

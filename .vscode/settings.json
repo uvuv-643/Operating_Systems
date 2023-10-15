@@ -8,6 +8,8 @@
         "memlayout.h": "c",
         "defs.h": "c",
         "riscv.h": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "limits": "cpp",
+        "stat.h": "c"
     }
 }

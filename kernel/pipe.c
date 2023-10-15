@@ -3,7 +3,7 @@
 #include "defs.h"
 #include "param.h"
 #include "spinlock.h"
-#include "proc.h"
+#include "proc/proc.h"
 #include "fs.h"
 #include "sleeplock.h"
 #include "file.h"

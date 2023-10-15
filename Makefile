@@ -12,7 +12,8 @@ OBJS = \
   $K/string.o \
   $K/main.o \
   $K/vm.o \
-  $K/proc.o \
+  $K/proc/proc.o \
+	$K/proc/proc_hashed.o \
   $K/swtch.o \
   $K/trampoline.o \
   $K/trap.o \
@@ -28,7 +29,10 @@ OBJS = \
   $K/sysfile.o \
   $K/kernelvec.o \
   $K/plic.o \
-  $K/virtio_disk.o
+  $K/virtio_disk.o \
+  $K/buddy.o \
+  $K/list.o
+ 
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
@@ -123,6 +127,7 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 .PRECIOUS: %.o
 
 UPROGS=\
+	xv6-readme\
 	$U/_cat\
 	$U/_echo\
 	$U/_forktest\
@@ -143,11 +148,12 @@ UPROGS=\
 	$U/_pingpong\
 	$U/_dumptests\
 	$U/_dump2tests\
+	$U/_alloctest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
 
--include kernel/*.d user/*.d
+-include kernel/*/*.d kernel/*.d user/*.d
 
 clean: 
 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \

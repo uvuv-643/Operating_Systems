@@ -6,7 +6,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
-#include "proc.h"
+#include "proc/proc.h"
 #include "sleeplock.h"
 
 void
@@ -36,6 +36,7 @@ releasesleep(struct sleeplock *lk)
   acquire(&lk->lk);
   lk->locked = 0;
   lk->pid = 0;
+
   wakeup(lk);
   release(&lk->lk);
 }

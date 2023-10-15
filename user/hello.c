@@ -5,11 +5,12 @@
 int
 main(int argc, char *argv[])
 {
-    uint64 k;
+    
+    // print_hash_proc();
+    print_hash_proc();
+    dump();
 
-    int result = dump2(3, 2, &k);
-    printf("This process PID: %d \n", getpid());
-    printf("Result: %d\n", result);
-    printf("%p \n", k);
     exit(0);
+
+
 }

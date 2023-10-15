@@ -3,7 +3,7 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
-#include "proc.h"
+#include "proc/proc.h"
 #include "syscall.h"
 #include "defs.h"
 
@@ -103,6 +103,8 @@ extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_dump(void);
 extern uint64 sys_dump2(void);
+extern uint64 sys_print_hash_proc(void);
+extern uint64 sys_free_hash_table(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -130,6 +132,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_dump]    sys_dump,
 [SYS_dump2]   sys_dump2,
+[SYS_print_hash_proc]   sys_print_hash_proc,
+[SYS_free_hash_table]   sys_free_hash_table,
 };
 
 void

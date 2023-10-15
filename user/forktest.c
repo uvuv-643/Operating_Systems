@@ -4,7 +4,6 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
 #include "user/user.h"
-
 #define N  1000
 
 void
@@ -22,10 +21,13 @@ forktest(void)
 
   for(n=0; n<N; n++){
     pid = fork();
-    if(pid < 0)
+    // print("OK\n");
+    if(pid < 0) {
       break;
-    if(pid == 0)
+    }
+    if(pid == 0) {
       exit(0);
+    }
   }
 
   if(n == N){

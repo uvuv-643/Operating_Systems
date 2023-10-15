@@ -38,3 +38,5 @@ entry("sleep");
 entry("uptime");
 entry("dump");
 entry("dump2");
+entry("print_hash_proc");
+entry("free_hash_table");

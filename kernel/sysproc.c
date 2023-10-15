@@ -4,7 +4,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "spinlock.h"
-#include "proc.h"
+#include "proc/proc.h"
 
 uint64
 sys_exit(void)
@@ -105,4 +105,16 @@ sys_dump2(void)
   argint(1, &register_num);
   argaddr(2, &return_value);
   return dump2(pid, register_num, return_value);
+}
+
+uint64 
+sys_print_hash_proc(void)
+{
+  return print_hash_proc();
+}
+
+uint64 
+sys_free_hash_table(void)
+{
+  return free_hash_table();
 }

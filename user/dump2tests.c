@@ -123,7 +123,9 @@ void test4() {
   printf("test 4 started\n");
   uint64 a;
   printf("[INFO] testing nonexisting proccess\n");
+  printf("1");
   int error = dump2(2147483647, 10, &a);
+  printf("2");
   if (error != -2) {
     printf("[ERROR] dump2 returned unexpected value %d, expected -2\n", error);
     goto failed;

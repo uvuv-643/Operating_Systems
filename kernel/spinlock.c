@@ -5,9 +5,8 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "riscv.h"
-#include "proc.h"
+#include "proc/proc.h"
 #include "defs.h"
-
 void
 initlock(struct spinlock *lk, char *name)
 {
@@ -16,21 +15,38 @@ initlock(struct spinlock *lk, char *name)
   lk->cpu = 0;
 }
 
+// int b = 0;
 // Acquire the lock.
 // Loops (spins) until the lock is acquired.
 void
 acquire(struct spinlock *lk)
 {
+
+  // if (lk->name[0] == 'b') {
+  //   b++;
+  // }
+  // if (lk->name[0] != 'p' && lk->name[0] != 'u' && b > 0) {
+  //   printf("ACQUIRE %s %d %x\n", lk->name, lk, cpuid());
+  // }
+
   push_off(); // disable interrupts to avoid deadlock.
-  if(holding(lk))
+  if(holding(lk)) {
+    printf("%s\n", lk->name);
     panic("acquire");
+
+  }
 
   // On RISC-V, sync_lock_test_and_set turns into an atomic swap:
   //   a5 = 1
   //   s1 = &lk->locked
   //   amoswap.w.aq a5, a5, (s1)
-  while(__sync_lock_test_and_set(&lk->locked, 1) != 0)
-    ;
+
+  // int i = 0;
+  while(__sync_lock_test_and_set(&lk->locked, 1) != 0) {
+    // if (i++ == 0 && lk->name[0] != 'p' && lk->name[0] != 'u' && b > 0) {
+    //   printf("ACQUIRE WHILE %s %d %x\n", lk->name, lk, cpuid());
+    // }
+  }
 
   // Tell the C compiler and the processor to not move loads or stores
   // past this point, to ensure that the critical section's memory
@@ -46,8 +62,15 @@ acquire(struct spinlock *lk)
 void
 release(struct spinlock *lk)
 {
-  if(!holding(lk))
+
+  // if (lk->name[0] != 'p' && lk->name[0] != 'u' && b > 0) {
+  //   printf("RELEASE %s %d %x\n", lk->name, lk, cpuid());
+  // }
+
+  if(!holding(lk)) {
+    printf("%s %x\n", lk->name, lk);
     panic("release");
+  }
 
   lk->cpu = 0;
 

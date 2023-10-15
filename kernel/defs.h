@@ -29,7 +29,7 @@ int             exec(char*, char**);
 struct file*    filealloc(void);
 void            fileclose(struct file*);
 struct file*    filedup(struct file*);
-void            fileinit(void);
+// void            fileinit(void);
 int             fileread(struct file*, uint64, int n);
 int             filestat(struct file*, uint64 addr);
 int             filewrite(struct file*, uint64, int n);
@@ -196,3 +196,33 @@ int             dump2(int, int, uint64);
 #define DUMP2_INCORRECT_PID -2
 #define DUMP2_INCORRECT_REGISTER_NUMBER -3
 #define DUMP2_UNABLE_TO_WRITE -4
+#define PROC_NO_PROCESS_FOUND 0
+#define PROC_WAS_FILLED 0
+#define PROC_NO_SPACE_FOR_PROCESS -1
+#define ARRAY_CANNOT_BE_EXTENDED -1
+#define PROC_OK 0
+
+// buddy.c
+void bd_init(void*, void*);
+void bd_free(void*);
+void* bd_malloc(uint64);
+
+struct list {
+  struct list* next;
+  struct list* prev;
+};
+
+// list.c
+void lst_init(struct list*);
+void lst_remove(struct list*);
+void lst_push(struct list*, void*);
+void* lst_pop(struct list*);
+void lst_print(struct list*);
+int lst_empty(struct list*);
+
+// proc/proc_hashed.c
+void proc_hashed_init(void);
+struct proc_hashed* proc_by_pid(int pid);
+int create_proc_by_pid(struct proc *current_process);
+int print_hash_proc(void);
+int free_hash_table(void);
