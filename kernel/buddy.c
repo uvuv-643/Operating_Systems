@@ -179,6 +179,8 @@ void bd_free(void *p) {
     }
     // budy is free; merge with buddy
     q = addr(k, buddy);
+  printf("try to free memory\n");
+
     lst_remove(q);  // remove buddy from free list
     if (buddy % 2 == 0) {
       p = q;

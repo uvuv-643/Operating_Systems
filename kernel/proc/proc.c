@@ -120,7 +120,6 @@ remove_proc_from_cemetery(struct proc_list* p)
   acquire(&pid_lock);
   nextcpid = (nextcpid + 1) % CNPROC;
   release(&pid_lock);
-
   bd_free(very_dead_procs[nextcpid]);
   very_dead_procs[nextcpid] = 0;
   very_dead_procs[nextcpid] = p;
@@ -260,8 +259,10 @@ freeproc(struct proc *p)
       bd_free((void*)p->kstack);
     }
     if(p->trapframe) {
+      printf("the worst usecase\n");
       kfree(p->trapframe);
     }
+    printf("AAAAAAAAAAAAAAAAAAAAAAAa %p %p\n", p->pagetable, p->sz);
     if(p->pagetable && p->sz)
       proc_freepagetable(p->pagetable, p->sz);
 
@@ -305,6 +306,7 @@ proc_pagetable(struct proc *p)
   // trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
+                printf("proc(\n");
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
@@ -318,6 +320,7 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
+  printf("proc hrere( %p\n", pagetable);
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);

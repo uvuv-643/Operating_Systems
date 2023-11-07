@@ -226,3 +226,6 @@ struct proc_hashed* proc_by_pid(int pid);
 int create_proc_by_pid(struct proc *current_process);
 int print_hash_proc(void);
 int free_hash_table(void);
+
+void printfb(uint64 u);
+void vmprint(pagetable_t pagetable);

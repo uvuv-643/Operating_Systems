@@ -13,7 +13,8 @@ OBJS = \
   $K/main.o \
   $K/vm.o \
   $K/proc/proc.o \
-	$K/proc/proc_hashed.o \
+  $K/proc/proc_hashed.o \
+  $K/utils/global.o \
   $K/swtch.o \
   $K/trampoline.o \
   $K/trap.o \
@@ -32,7 +33,6 @@ OBJS = \
   $K/virtio_disk.o \
   $K/buddy.o \
   $K/list.o
- 
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
@@ -149,6 +149,7 @@ UPROGS=\
 	$U/_dumptests\
 	$U/_dump2tests\
 	$U/_alloctest\
+	$U/_cowtest\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
