@@ -183,7 +183,6 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not a leaf");
     if(do_free){
       uint64 pa = PTE2PA(*pte);
-      printf("uvmunmap %p %p\n", pa, *pte);
       kfree((void*)pa);
     }
     *pte = 0;
@@ -293,7 +292,6 @@ freewalk(pagetable_t pagetable)
 void
 uvmfree(pagetable_t pagetable, uint64 sz)
 {
-  printf("uvmfree %d\n", PGROUNDUP(sz)/PGSIZE);
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
   freewalk(pagetable);
@@ -323,6 +321,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     // restrict writting
     // 00 -> 0, 10 -> 1, 01 -> 0, 11 -> 0
     *pte = *pte & ~(PTE_W);   
+    *pte = *pte | PTE_RSW_COW;   
     flags = PTE_FLAGS(*pte); 
 
     // printf("flags: %p\n", flags);
@@ -357,19 +356,29 @@ uvmclear(pagetable_t pagetable, uint64 va)
 // Copy from kernel to user.
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
-int
-copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
-{
-  uint64 n, va0, pa0;
+int copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) {
+  void *mem;
+  pte_t *pte;
+  uint64 va0, pa0, n;
 
-  while(len > 0){
+  while (len > 0) {
     va0 = PGROUNDDOWN(dstva);
+    if (va0 >= MAXVA || va0 <= 0) return -1;
+
+    pte = walk(pagetable, va0, 0);
+    if (pte == 0 || (*pte & PTE_V) == 0 || (*pte & PTE_U) == 0) return -1;
+
+    if ((*pte & PTE_RSW_COW) != 0) {
+      pa0 = PTE2PA(*pte);
+      if ((mem = kalloc()) == 0) return -1;
+      memmove(mem, (char *)pa0, PGSIZE);
+      *pte = (PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W) & ~PTE_RSW_COW;
+      kfree((char *)pa0);
+    }
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+    if (pa0 == 0) return -1;
     n = PGSIZE - (dstva - va0);
-    if(n > len)
-      n = len;
+    if (n > len) n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 
     len -= n;

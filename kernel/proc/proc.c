@@ -262,7 +262,8 @@ freeproc(struct proc *p)
       printf("the worst usecase\n");
       kfree(p->trapframe);
     }
-    printf("AAAAAAAAAAAAAAAAAAAAAAAa %p %p\n", p->pagetable, p->sz);
+    
+    // vmprint(p->pagetable);
     if(p->pagetable && p->sz)
       proc_freepagetable(p->pagetable, p->sz);
 
@@ -320,7 +321,6 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
-  printf("proc hrere( %p\n", pagetable);
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);

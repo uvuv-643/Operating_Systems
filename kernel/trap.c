@@ -46,32 +46,43 @@ usertrap(void)
   w_stvec((uint64)kernelvec);
 
   struct proc *p = myproc();
-  
+
   // save user program counter.
   p->trapframe->epc = r_sepc();
   
   if (r_scause() == 15 || r_scause() == 13) {
     // page fault
-    uint64 page_addr = PGROUNDDOWN(r_stval());
+    volatile uint64 va = r_stval();
+    // uint64 page_addr = PGROUNDDOWN(va);
     char* mem;
-    if ((mem = kalloc()) != 0) {
-      // printf("1 %p %p \n", page_addr, r_stval());
-      pte_t* pte = walk(p->pagetable, r_stval(), 0);
-      if (*pte & PTE_V && *pte & PTE_U) {
-        // printf("2 %p \n", (*pte));
-        *pte = *pte | (PTE_W | PTE_R);
+    pte_t* pte = walk(p->pagetable, va, 0);
+    if (*pte & PTE_V && *pte & PTE_U && (*pte & PTE_RSW_COW)) {
+      if ((mem = kalloc()) != 0) {
+        // *pte = *pte | (PTE_W | PTE_R);
+        // *pte = *pte & ~(PTE_RSW_COW);
         uint64 pa = PTE2PA(*pte);
-        uint flags = PTE_FLAGS(*pte);
-        // printf("3 %p \n", PTE2PA(*pte));
+        // uint flags = PTE_FLAGS(*pte);
         memmove(mem, (char*)pa, PGSIZE);
-        uvmunmap(p->pagetable, PGROUNDDOWN(page_addr), 1, 0);
-        if (mappages(p->pagetable, PGROUNDDOWN(page_addr), PGSIZE, (uint64)mem, flags) == 0) {
-          *pte = PA2PTE(mem) | flags;
-          goto trap_success;
+        if ((*pte & PTE_RSW_COW) != 0) {
+          *pte = (PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W) & ~PTE_RSW_COW;
+        } else {
+          *pte = (PA2PTE(mem) | PTE_FLAGS(*pte)) & ~PTE_RSW_COW;
         }
+        kfree((char *)pa);
+        goto trap_success;
+        // uvmunmap(p->pagetable, PGROUNDDOWN(page_addr), 1, 0);
+        // if (mappages(p->pagetable, PGROUNDDOWN(page_addr), PGSIZE, (uint64)mem, flags) == 0) {
+        //   *pte = PA2PTE(mem) | flags;
+        //   goto trap_success;
+        // }
       }
     }
+    p->killed = 1;
   } 
+  if (r_scause() == 2) {
+    printf("123");
+  }
+
   if (r_scause() == 8) {
     // system call
 
