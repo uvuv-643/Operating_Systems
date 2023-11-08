@@ -51,41 +51,32 @@ usertrap(void)
   p->trapframe->epc = r_sepc();
   
   if (r_scause() == 15 || r_scause() == 13) {
-    // page fault
     volatile uint64 va = r_stval();
-    // uint64 page_addr = PGROUNDDOWN(va);
-    char* mem;
-    pte_t* pte = walk(p->pagetable, va, 0);
-    if (*pte & PTE_V && *pte & PTE_U && (*pte & PTE_RSW_COW)) {
-      if ((mem = kalloc()) != 0) {
-        // *pte = *pte | (PTE_W | PTE_R);
-        // *pte = *pte & ~(PTE_RSW_COW);
-        uint64 pa = PTE2PA(*pte);
-        // uint flags = PTE_FLAGS(*pte);
-        memmove(mem, (char*)pa, PGSIZE);
-        if ((*pte & PTE_RSW_COW) != 0) {
-          *pte = (PA2PTE(mem) | PTE_FLAGS(*pte) | PTE_W) & ~PTE_RSW_COW;
-        } else {
-          *pte = (PA2PTE(mem) | PTE_FLAGS(*pte)) & ~PTE_RSW_COW;
+    uint64 page_addr = PGROUNDDOWN(va);
+    pte_t* pte = walk(p->pagetable, page_addr, 0);
+    if (p->sz <= va || va < PGSIZE) {
+      setkilled(p);
+      goto error;
+    }
+    if (pte == 0 || ((*pte & PTE_V) == 0)) {
+      if (p->sz <= va || va < PGROUNDDOWN(p->trapframe->sp)) {
+        setkilled(p);
+        goto error;
+      }
+      if (lazy_alloc(p->pagetable, page_addr) != 0) {
+        setkilled(p);
+        goto error;
+      }
+    } else {
+      if ((*pte & PTE_RSW_COW)) {
+        if (cow_copy(p->pagetable, page_addr) != 0) {
+          setkilled(p);
+          goto error;
         }
-        kfree((char *)pa);
-        goto trap_success;
-        // uvmunmap(p->pagetable, PGROUNDDOWN(page_addr), 1, 0);
-        // if (mappages(p->pagetable, PGROUNDDOWN(page_addr), PGSIZE, (uint64)mem, flags) == 0) {
-        //   *pte = PA2PTE(mem) | flags;
-        //   goto trap_success;
-        // }
       }
     }
-    p->killed = 1;
-  } 
-  if (r_scause() == 2) {
-    printf("123");
-  }
-
-  if (r_scause() == 8) {
+  } else if (r_scause() == 8) {
     // system call
-
     if(killed(p))
       exit(-1);
 
@@ -107,7 +98,7 @@ usertrap(void)
     setkilled(p);
   }
 
-trap_success:
+  error:
 
   if(killed(p))
     exit(-1);
@@ -255,4 +246,3 @@ devintr()
     return 0;
   }
 }
-

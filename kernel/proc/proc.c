@@ -259,7 +259,6 @@ freeproc(struct proc *p)
       bd_free((void*)p->kstack);
     }
     if(p->trapframe) {
-      printf("the worst usecase\n");
       kfree(p->trapframe);
     }
     
@@ -307,7 +306,6 @@ proc_pagetable(struct proc *p)
   // trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
-                printf("proc(\n");
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
