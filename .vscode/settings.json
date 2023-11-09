@@ -10,6 +10,7 @@
         "riscv.h": "c",
         "type_traits": "c",
         "limits": "cpp",
-        "stat.h": "c"
+        "stat.h": "c",
+        "fs.h": "c"
     }
 }

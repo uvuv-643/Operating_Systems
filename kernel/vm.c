@@ -403,15 +403,13 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       }
     }
     pte_t *pte = walk(pagetable, va, 0);
-    if (*pte == 0) {
-      setkilled(p);
+    if (pte == 0) {
+      return -1;
     }
 
    if ((va < p->sz) && (*pte & PTE_V) && (*pte & PTE_RSW_COW) && !(PTE_W & *pte)) {
       void* mem = kalloc();
-      if (mem == 0) {
-        return 0;
-      } else {
+      if (mem != 0) {
         memmove(mem, (char*)pa, PGSIZE);
         uint flags = PTE_FLAGS(*pte);
         uvmunmap(pagetable, va, 1, 1);
