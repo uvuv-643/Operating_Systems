@@ -198,6 +198,14 @@ void            virtio_disk_intr(void);
 int             dump(void);
 int             dump2(int, int, uint64);
 
+
+// proc_pool.c
+void                proc_pool_init();
+struct proc_list*   take_from_pool();
+void                free_from_pool(struct proc_list* proc);
+void                proc_pool_dump();
+
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
 

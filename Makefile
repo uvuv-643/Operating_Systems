@@ -14,6 +14,7 @@ OBJS = \
   $K/vm.o \
   $K/proc/proc.o \
   $K/proc/proc_hashed.o \
+	$K/proc/proc_pool.o \
   $K/utils/global.o \
   $K/swtch.o \
   $K/trampoline.o \
@@ -32,7 +33,7 @@ OBJS = \
   $K/plic.o \
   $K/virtio_disk.o \
   $K/buddy.o \
-  $K/list.o
+  $K/list.o 
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin

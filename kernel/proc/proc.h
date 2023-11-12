@@ -111,3 +111,9 @@ struct proc_hashed {
   int filled;
   struct proc *proc;
 };
+
+struct proc_list {
+  struct proc_list* next;
+  struct proc_list* prev;
+  struct proc proc;
+};

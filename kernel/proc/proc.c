@@ -8,11 +8,7 @@
 
 struct cpu cpus[NCPU];
 
-struct proc_list {
-  struct proc_list* next;
-  struct proc_list* prev;
-  struct proc proc;
-};
+
 
 struct {
   struct proc_list* procs;
@@ -62,6 +58,8 @@ procinit(void)
   pdata.procs_size = 0;
   pdata.cemetery_size = 0;
   proc_hashed_init();
+  proc_pool_init();
+  proc_pool_dump();
 }
 
 // Must be called with interrupts disabled,
@@ -120,7 +118,7 @@ remove_proc_from_cemetery(struct proc_list* p)
   acquire(&pid_lock);
   nextcpid = (nextcpid + 1) % CNPROC;
   release(&pid_lock);
-  bd_free(very_dead_procs[nextcpid]);
+  free_from_pool(very_dead_procs[nextcpid]);
   very_dead_procs[nextcpid] = 0;
   very_dead_procs[nextcpid] = p;
   return 0;
@@ -189,7 +187,8 @@ allocproc()
     }
   }
   if (pp == 0) {
-    pp = bd_malloc(sizeof(struct proc_list));
+    pp = take_from_pool();
+    // pp = bd_malloc(sizeof(struct proc_list));
   }
 
   if (pp == 0) return 0;
