@@ -5,6 +5,7 @@
 #include "../spinlock.h"
 #include "../defs.h"
 #include "proc.h"
+#include "proc_pool.h"
 
 struct cpu cpus[NCPU];
 
@@ -939,3 +940,25 @@ int dump2(int pid, int register_num, uint64 return_value) {
 
 }
 
+void remap_from_pool(struct proc_pool_free_data* pd, int cnt) {
+  struct proc_list* p = pdata.procs;
+  struct proc_list* pp = pdata.cemetery;
+  while (p != 0) {
+    for (int i = 0; i < cnt; i++) {
+      if (p->proc.pid == pd[i].pid) {
+        p->prev->next = pd[i].new_addr;
+        p->next->prev = pd[i].new_addr;
+      }
+    }
+    p = p->next;
+  }
+  while (pp != 0) {
+    for (int i = 0; i < cnt; i++) {
+      if (pp->proc.pid == pd[i].pid) {
+        pp->prev->next = pd[i].new_addr;
+        pp->next->prev = pd[i].new_addr;
+      }
+    }
+    pp = pp->next;
+  }
+}

@@ -5,12 +5,7 @@
 #include "../spinlock.h"
 #include "../defs.h"
 #include "proc.h"
-
-struct proc_pool {
-    struct proc_list proc_lists[NPROC];
-    struct proc_pool* prev;
-    struct proc_pool* next;
-};
+#include "proc_pool.h"
 
 // proc_index indicates where was put element last time
 struct proc_pool* last_pool = 0;
@@ -19,7 +14,7 @@ int proc_index = 0;
 // how often after free system has to find unused pools
 int proc_interval = NPROC / 2;
 int proc_interval_current = 0;
-int min_active_proc_count_in_pool = NPROC / 2;
+int min_active_proc_count_in_pool = 1;
 
 struct proc_pool* head;
 struct spinlock pool_lock;
@@ -56,7 +51,7 @@ void free_unused_proc_pools() {
     struct proc_pool* second_small_pool = 0;
     int second_small_pool_cnt = 0;
 
-    struct proc_pool* current_pool = head->next;
+    struct proc_pool* current_pool = head;
 
     // there we find two smallest pools for merging
     // if merge is possible
@@ -94,20 +89,33 @@ void free_unused_proc_pools() {
         current_pool = current_pool->next;
     }
 
+
     // merge two pools
     if (first_small_pool != 0 && second_small_pool != 0 && first_small_pool_cnt + second_small_pool_cnt <= NPROC) {
         struct proc_pool* pool = (struct proc_pool*) bd_malloc(sizeof(struct proc_pool));
         memset(head, 0, sizeof(struct proc_pool));
-        int l = 0; int r = 0;
-        while (l < first_small_pool_cnt && r < second_small_pool_cnt) {
-            if (l < first_small_pool_cnt && r < second_small_pool_cnt) {
+        int l = 0; int r = 0; int cnt = 0;
+        while (l < NPROC || r < NPROC) {
+            if (first_small_pool->proc_lists[l].proc.pid <= 0) {
+                l++; continue;
+            }
+            if (second_small_pool->proc_lists[r].proc.pid <= 0) {
+                r++; continue;
+            }
+            if (l < NPROC && r < NPROC) {
                 if (first_small_pool->proc_lists[l].proc.pid < second_small_pool->proc_lists[r].proc.pid) {
-                    pool->proc_lists[l + r] = first_small_pool->proc_lists[l];
+                    pool->proc_lists[cnt++] = first_small_pool->proc_lists[l];
                     l++;
                 } else {
-                    pool->proc_lists[l + r] = second_small_pool->proc_lists[r];
+                    pool->proc_lists[cnt++] = second_small_pool->proc_lists[r];
                     r++;
                 }
+            } else if (l < NPROC) {
+                pool->proc_lists[cnt++] = first_small_pool->proc_lists[l];
+                l++;
+            } else {
+                pool->proc_lists[cnt++] = second_small_pool->proc_lists[r];
+                r++;
             }
         }
         
@@ -115,19 +123,35 @@ void free_unused_proc_pools() {
         // pools from list
         pool->next = first_small_pool->next;
         pool->prev = first_small_pool->prev;
-        first_small_pool->prev->next = pool;
+        if (first_small_pool->prev)
+            first_small_pool->prev->next = pool;
+        else
+            head = pool;
 
         struct proc_pool* pp = second_small_pool;
         second_small_pool->prev->next = second_small_pool->next;
-        second_small_pool->next->prev = second_small_pool->prev;
+        if (second_small_pool->next)
+            second_small_pool->next->prev = second_small_pool->prev;
+
+        struct proc_pool_free_data remap_data[NPROC];
+        for (int i = 0; i < first_small_pool_cnt + second_small_pool_cnt; i++) {
+            remap_data[i] = (struct proc_pool_free_data) {
+                pool->proc_lists[i].proc.pid,
+                &pool->proc_lists[i]
+            };
+        }
+        remap_from_pool(remap_data, first_small_pool_cnt + second_small_pool_cnt);
 
         bd_free(pp);
         bd_free(first_small_pool);
 
     }
 
+    // todo: return to kernel process module data about changed addresses;
+    
     proc_interval_current = 0;
     release(&pool_lock);
+
 }
 
 
@@ -176,6 +200,7 @@ void proc_pool_dump() {
         [ZOMBIE]    "Z"
     };
     struct proc_pool* pp = head;
+    printf("\npooldump \n");
     printf("last_pool %p, last_index %d\n", last_pool, proc_index);
     while (pp != 0) {
         for (int i = 0; i < NPROC; i++) {

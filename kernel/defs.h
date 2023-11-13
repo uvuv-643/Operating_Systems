@@ -9,6 +9,7 @@ struct sleeplock;
 struct stat;
 struct superblock;
 
+
 // bio.c
 void            binit(void);
 struct buf*     bread(uint, uint);
@@ -110,6 +111,7 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -229,6 +231,11 @@ struct list {
   struct list* prev;
 };
 
+struct proc_pool_free_data {
+  int pid;
+  struct proc_list* new_addr;
+};
+
 // list.c
 void lst_init(struct list*);
 void lst_remove(struct list*);
@@ -246,3 +253,5 @@ int free_hash_table(void);
 
 void printfb(uint64 u);
 void vmprint(pagetable_t pagetable);
+
+void remap_from_pool(struct proc_pool_free_data* pd, int cnt);
